@@ -4,3 +4,4 @@ output
 *.key
 *.out
 *DS_Store*
+._serv.py
