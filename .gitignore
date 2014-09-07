@@ -3,4 +3,4 @@ build
 output
 *.key
 *.out
-
+*DS_Store*
