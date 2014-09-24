@@ -107,7 +107,8 @@ class SearchHandler(Main):
 		return {
 			'artists': search.artists,
 			'tracks': search.tracks,
-			'albums': search.albums
+			'albums': search.albums,
+			'playlists': search.playlists
 		}
 
 	@tornado.web.authenticated
@@ -565,6 +566,23 @@ class SpotifySearchEncoder(SpotifyDefaultEncoder):
 
 		if isinstance(obj, spotify.utils.Sequence) or isinstance(obj, list):
 			return [x for x in obj]
+
+		#Playlist
+		elif isinstance(obj, spotify.Playlist):
+			if not obj.is_loaded: obj.load()
+			return {
+				"name": obj.name
+			}
+
+		#SearchPlaylists
+		elif isinstance(obj, spotify.SearchPlaylist):
+			#if not obj.image.is_loaded: obj.image.load()
+			return {
+				"name": obj.name,
+				"link": obj.uri,
+				#"cover": obj.image.data_uri
+			}
+
 		#Tracks
 		elif isinstance(obj, spotify.track.Track):
 			if not obj.is_loaded: obj.load()
