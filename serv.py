@@ -22,7 +22,7 @@ class PiLiteBoard(threading.Thread):
 	def __init__(self, messageQueue):
 		threading.Thread.__init__(self)
 		self.ser = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0)
-		#self.ser.write("$$$SPEED40\r")
+		self.ser.write("$$$SPEED40\r")
 		self.messageQueue = messageQueue
 
 	def write(self, text):
