@@ -56,6 +56,9 @@ class Main(tornado.web.RequestHandler):
 		output = callback + "(" + response + ")" 
 
 		self.write(output)
+
+	def set_default_headers(self):
+		self.add_header('Access-Control-Allow-Origin', self.request.headers.get('Origin', '*'))
  
 class AuthHandler(Main):
 
@@ -84,11 +87,17 @@ class AuthHandler(Main):
 		self.set_secure_cookie("user", "")
 		self.write("out")
 
+	def unauthed(self):
+		self.set_status(403)
+		self.write("unauthed!");
+
 	def get(self, action = 'login'):
 		if(action == 'login'):
 			self.login()
 		elif(action == 'logout'):
 			self.logout()
+	        elif(action == 'unauthed'):
+			self.unauthed()
 		else:
 			self.write('Action `' + action + '` not supported', 400)
 
@@ -122,6 +131,7 @@ class AudioHandler(Main):
 
 	def initialize(self, spotifyHelper):
 		self.spotifyHelper = spotifyHelper
+		self.set_header('Access-Control-Allow-Origin', '*')
 
 	def play(self):
 		uri = self.get_argument("uri", None)
@@ -599,15 +609,20 @@ class SpotifySearchEncoder(SpotifyDefaultEncoder):
 		# Albums
 		elif isinstance(obj, spotify.album.Album):
 
+			cover = ""
+
 			if not obj.is_loaded: obj.load()
-			if not obj.cover(spotify.ImageSize.SMALL).is_loaded: obj.cover(spotify.ImageSize.SMALL).load()
+			if obj.cover():
+				if not obj.cover().is_loaded: 
+					cover = obj.cover().load().data_uri
+					
 
 			return {
 				"name": obj.name,
 				"artist": obj.artist,
 				"year": obj.year,
 				"link": obj.link.uri,
-				"cover": obj.cover(spotify.ImageSize.SMALL).data_uri
+				"cover": cover
 			}
 
 		# Artists
@@ -633,7 +648,7 @@ if __name__ == "__main__":
 	
 	settings = {
 		"cookie_secret":"61oETzKXQAGaYdkL5gEmGeJJFuYh7EQnp2XdTP1o/Vo=",
-		"login_url":"/auth/login/",
+		"login_url":"/auth/unauthed/",
 		"debug":"True",
 	}
 
