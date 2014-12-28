@@ -10,12 +10,12 @@ import Queue
 import math
 
 import logging
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 # http://www.tornadoweb.org/en/stable/options.html
 from tornado.options import define, options
 
 define("port", default=8888)
-define("debug", default=True)
+#define("debug", default=True)
 
 class PiLiteBoard(threading.Thread):
 
@@ -284,7 +284,28 @@ class QueueHelper(object):
 			for track in playlist.tracks:
 				self.addToQueue(track)
 
+			playlist.on(spotify.PlaylistEvent.TRACKS_ADDED, self.tracksAddedToPlaylist)
+			playlist.on(spotify.PlaylistEvent.TRACKS_REMOVED, self.trackRemovedFromPlaylist)
+
 		self.playing_link = link
+
+	def tracksAddedToPlaylist(self, playlist, tracks, index):
+		if not playlist.is_loaded: playlist.load()
+
+		if(self.__playIdx >= index):
+			print("Track added before currently playing!")
+			self.__playIdx = self.__playIdx + len(playlist.tracks)
+
+		self.resetQueue()
+		for track in playlist.tracks:
+			self.addToQueue(track)
+
+	def trackRemovedFromPlaylist(self, playlist, indexs):
+		if not playlist.is_loaded: playlist.load()
+
+		self.resetQueue()
+		for track in playlist.tracks:
+			self.addToQueue(track)
 
 	def addToQueue(self, track):
 		if not track.is_loaded: track.load()
