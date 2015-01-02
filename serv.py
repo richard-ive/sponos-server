@@ -387,15 +387,12 @@ class SpotifyHelper(object):
 
 		self.__session.on(spotify.SessionEvent.LOGGED_IN, self.on_logged_in)
 		self.__session.on(spotify.SessionEvent.LOGGED_OUT, self.on_logged_out)
-		self.__session.on(spotify.SessionEvent.END_OF_TRACK, self.on_end_of_track)
-		self.__session.on(spotify.SessionEvent.CONNECTION_STATE_UPDATED, self.connection_state_listener)
-
-		self.__audio = spotify.AlsaSink(self.session)
-		self.__mixer = self.__audio._alsaaudio.Mixer('PCM')
 
 		self.__queueHelper = QueueHelper(self)
-
 		self.__messageQueue = Queue.Queue()
+
+		self.__audio = None
+		self.__mixer = None
 
 		self.__event_loop = spotify.EventLoop(self.__session)
 		self.__event_loop.start()
@@ -405,11 +402,26 @@ class SpotifyHelper(object):
 		# TODO Handle error situations
 		self.__logged_in.set()
 		self.__logged_out.clear()
+		self.__session.on(spotify.SessionEvent.END_OF_TRACK, self.on_end_of_track)
+		self.__session.on(spotify.SessionEvent.CONNECTION_STATE_UPDATED, self.connection_state_listener)
+
+
+		if self.__audio is not None:
+			self.__audio.on()
+		else:
+			self.__audio = spotify.AlsaSink(self.session)
+
+		self.__mixer = self.__audio._alsaaudio.Mixer('PCM')
 
 	def on_logged_out(self, session):
 		print("logout!")
 		self.__queueHelper.resetQueue()
 		self.__queueHelper.resetPlayIdx()
+		self.__session.off(spotify.SessionEvent.END_OF_TRACK)
+		self.__session.off(spotify.SessionEvent.CONNECTION_STATE_UPDATED)
+
+		self.__audio.off()
+
 		self.__logged_in.clear()
 		self.__logged_out.set()
 
