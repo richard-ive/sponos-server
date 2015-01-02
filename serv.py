@@ -10,19 +10,19 @@ import Queue
 import math
 
 import logging
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 # http://www.tornadoweb.org/en/stable/options.html
 from tornado.options import define, options
 
 define("port", default=8888)
-define("debug", default=True)
+#define("debug", default=True)
 
 class PiLiteBoard(threading.Thread):
 
 	def __init__(self, messageQueue):
 		threading.Thread.__init__(self)
 		self.ser = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0)
-		#self.ser.write("$$$SPEED40\r")
+		self.ser.write("$$$SPEED40\r")
 		self.messageQueue = messageQueue
 
 	def write(self, text):
@@ -56,6 +56,9 @@ class Main(tornado.web.RequestHandler):
 		output = callback + "(" + response + ")" 
 
 		self.write(output)
+
+	def set_default_headers(self):
+		self.add_header('Access-Control-Allow-Origin', self.request.headers.get('Origin', '*'))
  
 class AuthHandler(Main):
 
@@ -84,11 +87,17 @@ class AuthHandler(Main):
 		self.set_secure_cookie("user", "")
 		self.write("out")
 
+	def unauthed(self):
+		self.set_status(403)
+		self.write("unauthed!");
+
 	def get(self, action = 'login'):
 		if(action == 'login'):
 			self.login()
 		elif(action == 'logout'):
 			self.logout()
+	        elif(action == 'unauthed'):
+			self.unauthed()
 		else:
 			self.write('Action `' + action + '` not supported', 400)
 
@@ -122,6 +131,7 @@ class AudioHandler(Main):
 
 	def initialize(self, spotifyHelper):
 		self.spotifyHelper = spotifyHelper
+		self.set_header('Access-Control-Allow-Origin', '*')
 
 	def play(self):
 		uri = self.get_argument("uri", None)
@@ -274,7 +284,28 @@ class QueueHelper(object):
 			for track in playlist.tracks:
 				self.addToQueue(track)
 
+			playlist.on(spotify.PlaylistEvent.TRACKS_ADDED, self.tracksAddedToPlaylist)
+			playlist.on(spotify.PlaylistEvent.TRACKS_REMOVED, self.trackRemovedFromPlaylist)
+
 		self.playing_link = link
+
+	def tracksAddedToPlaylist(self, playlist, tracks, index):
+		if not playlist.is_loaded: playlist.load()
+
+		if(self.__playIdx >= index):
+			print("Track added before currently playing!")
+			self.__playIdx = self.__playIdx + len(playlist.tracks)
+
+		self.resetQueue()
+		for track in playlist.tracks:
+			self.addToQueue(track)
+
+	def trackRemovedFromPlaylist(self, playlist, indexs):
+		if not playlist.is_loaded: playlist.load()
+
+		self.resetQueue()
+		for track in playlist.tracks:
+			self.addToQueue(track)
 
 	def addToQueue(self, track):
 		if not track.is_loaded: track.load()
@@ -356,15 +387,12 @@ class SpotifyHelper(object):
 
 		self.__session.on(spotify.SessionEvent.LOGGED_IN, self.on_logged_in)
 		self.__session.on(spotify.SessionEvent.LOGGED_OUT, self.on_logged_out)
-		self.__session.on(spotify.SessionEvent.END_OF_TRACK, self.on_end_of_track)
-		self.__session.on(spotify.SessionEvent.CONNECTION_STATE_UPDATED, self.connection_state_listener)
-
-		self.__audio = spotify.AlsaSink(self.session)
-		self.__mixer = self.__audio._alsaaudio.Mixer('PCM')
 
 		self.__queueHelper = QueueHelper(self)
-
 		self.__messageQueue = Queue.Queue()
+
+		self.__audio = None
+		self.__mixer = None
 
 		self.__event_loop = spotify.EventLoop(self.__session)
 		self.__event_loop.start()
@@ -374,11 +402,26 @@ class SpotifyHelper(object):
 		# TODO Handle error situations
 		self.__logged_in.set()
 		self.__logged_out.clear()
+		self.__session.on(spotify.SessionEvent.END_OF_TRACK, self.on_end_of_track)
+		self.__session.on(spotify.SessionEvent.CONNECTION_STATE_UPDATED, self.connection_state_listener)
+
+
+		if self.__audio is not None:
+			self.__audio.on()
+		else:
+			self.__audio = spotify.AlsaSink(self.session)
+
+		self.__mixer = self.__audio._alsaaudio.Mixer('PCM')
 
 	def on_logged_out(self, session):
 		print("logout!")
 		self.__queueHelper.resetQueue()
 		self.__queueHelper.resetPlayIdx()
+		self.__session.off(spotify.SessionEvent.END_OF_TRACK)
+		self.__session.off(spotify.SessionEvent.CONNECTION_STATE_UPDATED)
+
+		self.__audio.off()
+
 		self.__logged_in.clear()
 		self.__logged_out.set()
 
@@ -599,15 +642,20 @@ class SpotifySearchEncoder(SpotifyDefaultEncoder):
 		# Albums
 		elif isinstance(obj, spotify.album.Album):
 
+			cover = ""
+
 			if not obj.is_loaded: obj.load()
-			if not obj.cover(spotify.ImageSize.SMALL).is_loaded: obj.cover(spotify.ImageSize.SMALL).load()
+			if obj.cover():
+				if not obj.cover().is_loaded: 
+					cover = obj.cover().load().data_uri
+					
 
 			return {
 				"name": obj.name,
 				"artist": obj.artist,
 				"year": obj.year,
 				"link": obj.link.uri,
-				"cover": obj.cover(spotify.ImageSize.SMALL).data_uri
+				"cover": cover
 			}
 
 		# Artists
@@ -633,7 +681,7 @@ if __name__ == "__main__":
 	
 	settings = {
 		"cookie_secret":"61oETzKXQAGaYdkL5gEmGeJJFuYh7EQnp2XdTP1o/Vo=",
-		"login_url":"/auth/login/",
+		"login_url":"/auth/unauthed/",
 		"debug":"True",
 	}
 
