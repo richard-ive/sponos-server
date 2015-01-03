@@ -10,12 +10,12 @@ import Queue
 import math
 
 import logging
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 # http://www.tornadoweb.org/en/stable/options.html
 from tornado.options import define, options
 
 define("port", default=8888)
-#define("debug", default=True)
+define("debug", default=True)
 
 class PiLiteBoard(threading.Thread):
 
@@ -78,6 +78,7 @@ class AuthHandler(Main):
 			self.set_secure_cookie("user", spotifyHelper.session.user_name)
 			self.callbackWrapper("{message:'ok'}")
 		else:
+			self.set_status(403)
 			self.callbackWrapper("{message:'Incorrect login'}")
 
 	def logout(self):
@@ -187,7 +188,8 @@ class AudioHandler(Main):
 			"playIdx": spotifyHelper.queueHelper.playIdx,
 			"queue": spotifyHelper.queueHelper.queue,
 			"volume": self.volume(),
-			"playStatus":spotifyHelper.queueHelper.playStatus
+			"playStatus":spotifyHelper.queueHelper.playStatus,
+			"user": spotifyHelper.user
 		}
 		return nowPlaying
 
@@ -394,6 +396,8 @@ class SpotifyHelper(object):
 		self.__audio = None
 		self.__mixer = None
 
+		self.__user = None
+
 		self.__event_loop = spotify.EventLoop(self.__session)
 		self.__event_loop.start()
 
@@ -436,6 +440,7 @@ class SpotifyHelper(object):
 	def connection_state_listener(self, session):
 		if session.connection.state is spotify.ConnectionState.LOGGED_IN:
 			name = session.user.load().display_name
+			self.__user = name
 			self.__messageQueue.put('Welcome ' + name)
 
 
@@ -494,6 +499,14 @@ class SpotifyHelper(object):
 	@messageQueue.setter
 	def  messageQueue(self, value):
 		self.__messageQueue = value
+
+	@property
+	def user(self):
+		return self.__user
+
+	@user.setter
+	def  user(self, value):
+		self.__user = value
 
 class RadioHelper():
 
