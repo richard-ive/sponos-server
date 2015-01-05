@@ -191,6 +191,9 @@ class AudioHandler(Main):
 			"playStatus":spotifyHelper.queueHelper.playStatus,
 			"user": spotifyHelper.user
 		}
+
+		spotifyHelper.messageQueue.put(spotifyHelper.queueHelper.playingString())
+
 		return nowPlaying
 
 	def myPlaylists(self):
@@ -318,10 +321,8 @@ class QueueHelper(object):
 		track = self.__queue[self.__playIdx]
 		spotifyHelper.session.player.unload()
 		spotifyHelper.session.player.load(track)
-
-		trackAndArtist = track.name + ' - ' + ", ".join([artist.load().name for artist in track.artists])
 			
-		spotifyHelper.messageQueue.put(trackAndArtist)
+		spotifyHelper.messageQueue.put(self.playingString())
 		spotifyHelper.session.player.play()
 
 		return self
@@ -347,6 +348,13 @@ class QueueHelper(object):
 
 	def isPrev(self):
 		return (self.__playIdx > 0)
+
+	def playingString(self):
+		
+		track = self.__queue[self.__playIdx]
+		trackAndArtist = track.name + ' - ' + ", ".join([artist.load().name for artist in track.artists])
+
+		return trackAndArtist
 
 	@property
 	def playIdx(self):
@@ -442,7 +450,6 @@ class SpotifyHelper(object):
 			name = session.user.load().display_name
 			self.__user = name
 			self.__messageQueue.put('Welcome ' + name)
-
 
 	@property
 	def session(self):
