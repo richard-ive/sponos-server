@@ -5,7 +5,7 @@ import tornado.web
 import spotify
 import json
 import serial
-import Queue
+import queue
 #import psycopg2
 import math
 
@@ -22,7 +22,7 @@ class PiLiteBoard(threading.Thread):
 	def __init__(self, messageQueue):
 		threading.Thread.__init__(self)
 		self.ser = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0)
-		self.ser.write("$$$SPEED40\r")
+		self.ser.write(bytes("$$$SPEED40\r", "UTF-8"))
 		self.messageQueue = messageQueue
 
 	def write(self, text):
@@ -97,7 +97,7 @@ class AuthHandler(Main):
 			self.login()
 		elif(action == 'logout'):
 			self.logout()
-	        elif(action == 'unauthed'):
+		elif(action == 'unauthed'):
 			self.unauthed()
 		else:
 			self.write('Action `' + action + '` not supported', 400)
@@ -399,7 +399,7 @@ class SpotifyHelper(object):
 		self.__session.on(spotify.SessionEvent.LOGGED_OUT, self.on_logged_out)
 
 		self.__queueHelper = QueueHelper(self)
-		self.__messageQueue = Queue.Queue()
+		self.__messageQueue = queue.Queue()
 
 		self.__audio = None
 		self.__mixer = None
@@ -421,7 +421,7 @@ class SpotifyHelper(object):
 		if self.__audio is not None:
 			self.__audio.on()
 		else:
-			self.__audio = spotify.AlsaSink(self.session)
+			self.__audio = spotify.AlsaSink(self.session,"ALSA")
 
 		self.__mixer = self.__audio._alsaaudio.Mixer('PCM')
 
@@ -663,19 +663,24 @@ class SpotifySearchEncoder(SpotifyDefaultEncoder):
 		elif isinstance(obj, spotify.album.Album):
 
 			cover = ""
+			coverURI = ""
 
 			if not obj.is_loaded: obj.load()
 			if obj.cover():
 				if not obj.cover().is_loaded: 
-					cover = obj.cover().load().data_uri
-					
+					cover = obj.cover()
+					cover.load()
+					coverURI = cover.data_uri
+					print(obj.name)
+					print(coverURI[:30])
+						
 
 			return {
 				"name": obj.name,
 				"artist": obj.artist,
 				"year": obj.year,
 				"link": obj.link.uri,
-				"cover": cover
+				"cover": coverURI
 			}
 
 		# Artists
