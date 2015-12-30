@@ -5,24 +5,24 @@ import tornado.web
 import spotify
 import json
 import serial
-import Queue
+import queue
 #import psycopg2
 import math
 
 import logging
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 # http://www.tornadoweb.org/en/stable/options.html
 from tornado.options import define, options
 
 define("port", default=8888)
-#define("debug", default=True)
+define("debug", default=True)
 
 class PiLiteBoard(threading.Thread):
 
 	def __init__(self, messageQueue):
 		threading.Thread.__init__(self)
 		self.ser = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0)
-		self.ser.write("$$$SPEED40\r")
+		self.ser.write(bytes("$$$SPEED40\r", "UTF-8"))
 		self.messageQueue = messageQueue
 
 	def write(self, text):
@@ -78,6 +78,7 @@ class AuthHandler(Main):
 			self.set_secure_cookie("user", spotifyHelper.session.user_name)
 			self.callbackWrapper("{message:'ok'}")
 		else:
+			self.set_status(403)
 			self.callbackWrapper("{message:'Incorrect login'}")
 
 	def logout(self):
@@ -96,7 +97,7 @@ class AuthHandler(Main):
 			self.login()
 		elif(action == 'logout'):
 			self.logout()
-	        elif(action == 'unauthed'):
+		elif(action == 'unauthed'):
 			self.unauthed()
 		else:
 			self.write('Action `' + action + '` not supported', 400)
@@ -187,8 +188,12 @@ class AudioHandler(Main):
 			"playIdx": spotifyHelper.queueHelper.playIdx,
 			"queue": spotifyHelper.queueHelper.queue,
 			"volume": self.volume(),
-			"playStatus":spotifyHelper.queueHelper.playStatus
+			"playStatus":spotifyHelper.queueHelper.playStatus,
+			"user": spotifyHelper.user
 		}
+
+		spotifyHelper.messageQueue.put(spotifyHelper.queueHelper.playingString())
+
 		return nowPlaying
 
 	def myPlaylists(self):
@@ -316,10 +321,8 @@ class QueueHelper(object):
 		track = self.__queue[self.__playIdx]
 		spotifyHelper.session.player.unload()
 		spotifyHelper.session.player.load(track)
-
-		trackAndArtist = track.name + ' - ' + ", ".join([artist.load().name for artist in track.artists])
 			
-		spotifyHelper.messageQueue.put(trackAndArtist)
+		spotifyHelper.messageQueue.put(self.playingString())
 		spotifyHelper.session.player.play()
 
 		return self
@@ -345,6 +348,13 @@ class QueueHelper(object):
 
 	def isPrev(self):
 		return (self.__playIdx > 0)
+
+	def playingString(self):
+		
+		track = self.__queue[self.__playIdx]
+		trackAndArtist = track.name + ' - ' + ", ".join([artist.load().name for artist in track.artists])
+
+		return trackAndArtist
 
 	@property
 	def playIdx(self):
@@ -389,10 +399,12 @@ class SpotifyHelper(object):
 		self.__session.on(spotify.SessionEvent.LOGGED_OUT, self.on_logged_out)
 
 		self.__queueHelper = QueueHelper(self)
-		self.__messageQueue = Queue.Queue()
+		self.__messageQueue = queue.Queue()
 
 		self.__audio = None
 		self.__mixer = None
+
+		self.__user = None
 
 		self.__event_loop = spotify.EventLoop(self.__session)
 		self.__event_loop.start()
@@ -409,7 +421,7 @@ class SpotifyHelper(object):
 		if self.__audio is not None:
 			self.__audio.on()
 		else:
-			self.__audio = spotify.AlsaSink(self.session)
+			self.__audio = spotify.AlsaSink(self.session,"ALSA")
 
 		self.__mixer = self.__audio._alsaaudio.Mixer('PCM')
 
@@ -436,8 +448,8 @@ class SpotifyHelper(object):
 	def connection_state_listener(self, session):
 		if session.connection.state is spotify.ConnectionState.LOGGED_IN:
 			name = session.user.load().display_name
+			self.__user = name
 			self.__messageQueue.put('Welcome ' + name)
-
 
 	@property
 	def session(self):
@@ -494,6 +506,14 @@ class SpotifyHelper(object):
 	@messageQueue.setter
 	def  messageQueue(self, value):
 		self.__messageQueue = value
+
+	@property
+	def user(self):
+		return self.__user
+
+	@user.setter
+	def  user(self, value):
+		self.__user = value
 
 class RadioHelper():
 
@@ -643,19 +663,21 @@ class SpotifySearchEncoder(SpotifyDefaultEncoder):
 		elif isinstance(obj, spotify.album.Album):
 
 			cover = ""
+			coverURI = ""
 
 			if not obj.is_loaded: obj.load()
 			if obj.cover():
 				if not obj.cover().is_loaded: 
-					cover = obj.cover().load().data_uri
-					
+					cover = obj.cover()
+					cover.load()
+					coverURI = cover.data_uri
 
 			return {
 				"name": obj.name,
 				"artist": obj.artist,
 				"year": obj.year,
 				"link": obj.link.uri,
-				"cover": cover
+				"cover": coverURI
 			}
 
 		# Artists
