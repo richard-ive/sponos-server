@@ -671,9 +671,6 @@ class SpotifySearchEncoder(SpotifyDefaultEncoder):
 					cover = obj.cover()
 					cover.load()
 					coverURI = cover.data_uri
-					print(obj.name)
-					print(coverURI[:30])
-						
 
 			return {
 				"name": obj.name,
